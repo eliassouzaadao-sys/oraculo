@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1E293B;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3B82F6;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #60A5FA;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: #1E293B;
+  color: #F1F5F9;
+}
+
+/* Typography - Inter font weights */
+/* Títulos: Extrabold (800) e Bold (700) */
+/* Subtítulos e textos: SemiBold (600) e Regular (400) */
+
+h1, .text-title {
+  font-weight: 800; /* Extrabold */
+}
+
+h2, .text-title-secondary {
+  font-weight: 700; /* Bold */
+}
+
+h3, .text-subtitle {
+  font-weight: 600; /* SemiBold */
+}
+
+p, .text-body {
+  font-weight: 400; /* Regular */
+}
+
+/* Selection color */
+::selection {
+  background: rgba(59, 130, 246, 0.4);
+  color: #F1F5F9;
+}
+
+/* Animation for cursor */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s infinite;
+  color: #3B82F6;
+}
+
+/* Loading dots animation */
+@keyframes bounce-delay {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+.animate-bounce-delay-1 { animation: bounce-delay 1.4s infinite ease-in-out both; animation-delay: -0.32s; }
+.animate-bounce-delay-2 { animation: bounce-delay 1.4s infinite ease-in-out both; animation-delay: -0.16s; }
+.animate-bounce-delay-3 { animation: bounce-delay 1.4s infinite ease-in-out both; }
+
+/* Gradient backgrounds */
+.gradient-primary {
+  background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+}
+
+.gradient-accent {
+  background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%);
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* Markdown styles for chat */
+.chat-content h1 {
+  font-weight: 800; /* Extrabold */
+  font-size: 1.5rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  color: #F1F5F9;
+}
+
+.chat-content h2 {
+  font-weight: 700; /* Bold */
+  font-size: 1.25rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  color: #F1F5F9;
+}
+
+.chat-content h3 {
+  font-weight: 600; /* SemiBold */
+  font-size: 1.125rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  color: #F1F5F9;
+}
+
+.chat-content p {
+  margin-bottom: 0.75rem;
+  line-height: 1.7;
+}
+
+.chat-content ul,
+.chat-content ol {
+  margin-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.chat-content li {
+  margin-bottom: 0.25rem;
+}
+
+.chat-content code {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60A5FA;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+}
+
+.chat-content pre {
+  background: #0F172A;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.chat-content pre code {
+  background: transparent;
+  padding: 0;
+  color: #F1F5F9;
+}
+
+.chat-content a {
+  color: #3B82F6;
+  text-decoration: underline;
+}
+
+.chat-content a:hover {
+  color: #60A5FA;
+}
+
+.chat-content blockquote {
+  border-left: 3px solid #3B82F6;
+  padding-left: 1rem;
+  margin: 0.75rem 0;
+  color: #64748B;
+  font-style: italic;
+}
+
+/* Focus styles */
+input:focus,
+textarea:focus,
+button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+/* Transition utilities */
+.transition-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Hover glow effect */
+.hover-glow:hover {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

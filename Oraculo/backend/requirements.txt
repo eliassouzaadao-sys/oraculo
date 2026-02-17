@@ -1,0 +1,32 @@
+# Backend API
+fastapi==0.109.0
+uvicorn==0.27.0
+python-multipart==0.0.6
+
+# LangChain
+langchain==0.3.0
+langchain-community==0.3.0
+langchain-openai==0.2.0
+
+# Processamento de Documentos
+pypdf==5.0.0
+beautifulsoup4==4.12.3
+youtube_transcript_api>=0.6.2
+python-docx==1.1.0
+openpyxl==3.1.2
+python-pptx==0.6.23
+
+# OCR
+pytesseract==0.3.10
+Pillow==10.4.0
+
+# Utilidades
+python-dotenv==1.0.1
+fake_useragent==1.5.1
+numpy
+
+# Autenticacao
+sqlalchemy==2.0.25
+python-jose[cryptography]==3.3.0
+bcrypt>=4.0.0
+email-validator==2.3.0

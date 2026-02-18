@@ -54,6 +54,9 @@ def transcreve_audio(caminho: str, idioma: str = None) -> str:
     try:
         client = OpenAI(api_key=Config.OPENAI_API_KEY)
 
+        print(f"[AUDIO] Iniciando transcricao de: {caminho}")
+        print(f"[AUDIO] Tamanho: {file_size_mb:.2f}MB")
+
         with open(caminho, "rb") as audio_file:
             # Parametros da transcricao
             params = {
@@ -62,14 +65,20 @@ def transcreve_audio(caminho: str, idioma: str = None) -> str:
                 "response_format": "text"
             }
 
-            # Adiciona idioma se especificado
+            # Adiciona idioma se especificado (pt para portugues)
             if idioma:
                 params["language"] = idioma
+            else:
+                # Default para portugues
+                params["language"] = "pt"
 
             transcricao = client.audio.transcriptions.create(**params)
 
         # Whisper retorna string quando response_format="text"
         texto = transcricao.strip() if isinstance(transcricao, str) else transcricao.text.strip()
+
+        print(f"[AUDIO] Transcricao concluida: {len(texto)} caracteres")
+        print(f"[AUDIO] Preview: {texto[:200]}..." if len(texto) > 200 else f"[AUDIO] Texto: {texto}")
 
         if not texto:
             return "Nenhuma fala detectada no audio."
@@ -77,4 +86,5 @@ def transcreve_audio(caminho: str, idioma: str = None) -> str:
         return texto
 
     except Exception as e:
+        print(f"[AUDIO] ERRO na transcricao: {type(e).__name__}: {str(e)}")
         raise Exception(f"Erro ao transcrever audio: {str(e)}")

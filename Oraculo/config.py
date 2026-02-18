@@ -22,7 +22,7 @@ class Config:
     CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1500"))       # Preserva paragrafos completos
     CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))  # ~13% sobreposicao semantica
     TOP_K_RESULTS = int(os.getenv("TOP_K_RESULTS", "8"))    # Mais contexto disponivel
-    SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.5"))  # Filtro de qualidade
+    SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.3"))  # Filtro de qualidade (0.3 = mais flexivel)
 
     # LLM Settings
     TEMPERATURE = float(os.getenv("TEMPERATURE", "0.3"))    # Mais preciso e consistente

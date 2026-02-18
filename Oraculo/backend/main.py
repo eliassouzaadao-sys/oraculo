@@ -466,8 +466,9 @@ async def upload_file(
         # Processa baseado no tipo
         if eh_audio(caminho_temp):
             # Audio: transcreve com Whisper
-            print(f"[DEBUG] Processando audio: {nome}")
+            print(f"[UPLOAD] Processando audio: {nome}")
             texto = transcreve_audio(caminho_temp)
+            print(f"[UPLOAD] Audio transcrito: {len(texto)} chars - Preview: {texto[:100]}...")
             tipo = 'audio'
         elif eh_imagem(caminho_temp):
             # Imagem: OCR com Tesseract

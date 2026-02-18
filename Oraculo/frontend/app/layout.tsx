@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from '@/context/AuthContext'
+import { SectorProvider } from '@/context/SectorContext'
 import './globals.css'
 
 const inter = Inter({
@@ -13,6 +14,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Oraculo',
   description: 'Seu Assistente de Conhecimento',
+  icons: {
+    icon: '/logo-symbol.png',
+    apple: '/logo-symbol.png',
+  },
 }
 
 export default function RootLayout({
@@ -24,7 +29,9 @@ export default function RootLayout({
     <html lang="pt-BR" className="dark">
       <body className={`${inter.className} bg-chat-bg text-chat-text`}>
         <AuthProvider>
-          {children}
+          <SectorProvider>
+            {children}
+          </SectorProvider>
         </AuthProvider>
         <Toaster
           position="top-right"

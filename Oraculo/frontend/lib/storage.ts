@@ -23,12 +23,14 @@ export interface Conversation {
   messages: Message[]
   createdAt: number
   updatedAt: number
+  sectorId?: string  // ID do setor para isolamento
 }
 
 // Chaves de storage
 const STORAGE_KEYS = {
   CONVERSATIONS: 'oraculo_conversations',
   ACTIVE_CONVERSATION: 'oraculo_active_conversation',
+  ACTIVE_SECTOR: 'oraculo_active_sector',
   SETTINGS: 'oraculo_settings',
 } as const
 
@@ -55,17 +57,26 @@ export function extractTitle(messages: Message[]): string {
 
 /**
  * Carrega todas as conversas do localStorage.
+ * @param sectorId ID do setor - OBRIGATORIO para filtrar conversas
+ * Se nao fornecido, retorna array vazio (conversas sao isoladas por setor)
  */
-export function loadConversations(): Conversation[] {
+export function loadConversations(sectorId?: string): Conversation[] {
   if (typeof window === 'undefined') return []
+
+  // Se nao tiver sectorId, retorna vazio - conversas sao isoladas por setor
+  if (!sectorId) return []
 
   try {
     const data = localStorage.getItem(STORAGE_KEYS.CONVERSATIONS)
     if (!data) return []
 
     const conversations = JSON.parse(data) as Conversation[]
+
+    // Filtra APENAS conversas do setor especificado
+    const filtered = conversations.filter(c => c.sectorId === sectorId)
+
     // Ordena por data de atualizacao (mais recente primeiro)
-    return conversations.sort((a, b) => b.updatedAt - a.updatedAt)
+    return filtered.sort((a, b) => b.updatedAt - a.updatedAt)
   } catch (error) {
     console.error('Erro ao carregar conversas:', error)
     return []
@@ -91,10 +102,25 @@ export function saveConversations(conversations: Conversation[]): void {
 }
 
 /**
+ * Carrega TODAS as conversas (uso interno).
+ */
+function loadAllConversationsInternal(): Conversation[] {
+  if (typeof window === 'undefined') return []
+
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.CONVERSATIONS)
+    if (!data) return []
+    return JSON.parse(data) as Conversation[]
+  } catch {
+    return []
+  }
+}
+
+/**
  * Carrega uma conversa especifica pelo ID.
  */
 export function loadConversation(id: string): Conversation | null {
-  const conversations = loadConversations()
+  const conversations = loadAllConversationsInternal()
   return conversations.find(c => c.id === id) || null
 }
 
@@ -102,7 +128,7 @@ export function loadConversation(id: string): Conversation | null {
  * Salva ou atualiza uma conversa.
  */
 export function saveConversation(conversation: Conversation): void {
-  const conversations = loadConversations()
+  const conversations = loadAllConversationsInternal()
   const index = conversations.findIndex(c => c.id === conversation.id)
 
   if (index >= 0) {
@@ -116,8 +142,10 @@ export function saveConversation(conversation: Conversation): void {
 
 /**
  * Cria uma nova conversa.
+ * @param messages Mensagens iniciais
+ * @param sectorId ID do setor para vincular a conversa
  */
-export function createConversation(messages: Message[] = []): Conversation {
+export function createConversation(messages: Message[] = [], sectorId?: string): Conversation {
   const now = Date.now()
   const conversation: Conversation = {
     id: generateId(),
@@ -125,6 +153,7 @@ export function createConversation(messages: Message[] = []): Conversation {
     messages,
     createdAt: now,
     updatedAt: now,
+    sectorId,
   }
 
   saveConversation(conversation)
@@ -151,7 +180,7 @@ export function updateConversationMessages(id: string, messages: Message[]): voi
  * Deleta uma conversa.
  */
 export function deleteConversation(id: string): void {
-  const conversations = loadConversations()
+  const conversations = loadAllConversationsInternal()
   const filtered = conversations.filter(c => c.id !== id)
   saveConversations(filtered)
 
@@ -241,5 +270,61 @@ export function saveSettings(settings: Partial<Settings>): void {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated))
   } catch (error) {
     console.error('Erro ao salvar configuracoes:', error)
+  }
+}
+
+// Funcoes de Setor
+
+/**
+ * Obtem o ID do setor ativo.
+ */
+export function getActiveSectorId(): string | null {
+  if (typeof window === 'undefined') return null
+
+  try {
+    return localStorage.getItem(STORAGE_KEYS.ACTIVE_SECTOR)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Define o setor ativo.
+ */
+export function setActiveSectorId(id: string | null): void {
+  if (typeof window === 'undefined') return
+
+  try {
+    if (id) {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_SECTOR, id)
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.ACTIVE_SECTOR)
+    }
+  } catch (error) {
+    console.error('Erro ao definir setor ativo:', error)
+  }
+}
+
+/**
+ * Limpa conversas de um setor especifico.
+ */
+export function clearSectorConversations(sectorId: string): void {
+  if (typeof window === 'undefined') return
+
+  try {
+    const allConversations = loadAllConversationsInternal()
+    const filtered = allConversations.filter(c => c.sectorId !== sectorId)
+    saveConversations(filtered)
+
+    // Se a conversa ativa era do setor, limpa
+    const activeId = getActiveConversationId()
+    if (activeId) {
+      const active = allConversations.find(c => c.id === activeId)
+      if (active?.sectorId === sectorId) {
+        setActiveConversationId(null)
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao limpar conversas do setor:', error)
   }
 }

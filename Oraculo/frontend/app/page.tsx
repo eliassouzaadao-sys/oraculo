@@ -8,6 +8,7 @@ import ChatInput from '@/components/ChatInput'
 import WelcomeScreen from '@/components/WelcomeScreen'
 import AuthGuard from '@/components/AuthGuard'
 import { useAuth } from '@/context/AuthContext'
+import { useSector } from '@/context/SectorContext'
 import {
   Message,
   Source,
@@ -33,6 +34,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export default function Home() {
   const { user, logout } = useAuth()
+  const { activeSector, refreshSectors } = useSector()
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [stats, setStats] = useState<Stats>({ total_documentos: 0, total_chunks: 0, fontes: [] })
@@ -40,10 +42,11 @@ export default function Home() {
   const [activeConversationId, setActiveConvId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Carrega estatisticas
+  // Carrega estatisticas do setor
   const loadStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/stats`)
+      const sectorParam = activeSector ? `?sector_id=${activeSector.id}` : ''
+      const res = await fetch(`${API_URL}/stats${sectorParam}`)
       if (res.ok) {
         const data = await res.json()
         setStats(data)
@@ -51,22 +54,30 @@ export default function Home() {
     } catch (error) {
       console.error('Erro ao carregar stats:', error)
     }
-  }, [])
+  }, [activeSector])
 
-  // Inicializacao
+  // Inicializacao e ao trocar de setor
   useEffect(() => {
     loadStats()
 
-    // Carrega conversa ativa do localStorage
-    const savedId = getActiveConversationId()
-    if (savedId) {
-      const conversation = loadConversation(savedId)
-      if (conversation) {
-        setActiveConvId(savedId)
-        setMessages(conversation.messages)
+    // Sempre limpa ao trocar de setor
+    setActiveConvId(null)
+    setMessages([])
+    setActiveConversationId(null)
+
+    // So tenta carregar conversa se tiver setor ativo
+    if (activeSector) {
+      const savedId = getActiveConversationId()
+      if (savedId) {
+        const conversation = loadConversation(savedId)
+        // Verifica se conversa pertence ao setor atual
+        if (conversation && conversation.sectorId === activeSector.id.toString()) {
+          setActiveConvId(savedId)
+          setMessages(conversation.messages)
+        }
       }
     }
-  }, [loadStats])
+  }, [loadStats, activeSector])
 
   // Scroll para o fim
   const scrollToBottom = useCallback(() => {
@@ -88,10 +99,16 @@ export default function Home() {
   const sendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return
 
-    // Se nao ha conversa ativa, cria uma nova
+    // Verifica se tem setor ativo
+    if (!activeSector) {
+      toast.error('Selecione um setor primeiro')
+      return
+    }
+
+    // Se nao ha conversa ativa, cria uma nova vinculada ao setor
     let currentConvId = activeConversationId
     if (!currentConvId) {
-      const newConv = createConversation([])
+      const newConv = createConversation([], activeSector.id.toString())
       currentConvId = newConv.id
       setActiveConvId(currentConvId)
     }
@@ -105,7 +122,7 @@ export default function Home() {
     setMessages(prev => [...prev, { role: 'assistant', content: '', timestamp: Date.now() }])
 
     try {
-      const res = await fetch(`${API_URL}/chat`, {
+      const res = await fetch(`${API_URL}/chat?sector_id=${activeSector.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: content })
@@ -141,7 +158,9 @@ export default function Home() {
                 // Ignora erro de parse
               }
             } else {
-              fullResponse += data
+              // Decodifica newlines que foram codificadas no backend
+              const decodedData = data.replace(/\\n/g, '\n')
+              fullResponse += decodedData
               setMessages(prev => {
                 const newMessages = [...prev]
                 newMessages[newMessages.length - 1] = {
@@ -181,15 +200,20 @@ export default function Home() {
 
   // Nova conversa
   const newChat = async () => {
+    if (!activeSector) {
+      toast.error('Selecione um setor primeiro')
+      return
+    }
+
     // Limpa memoria no servidor
     try {
-      await fetch(`${API_URL}/clear-chat`, { method: 'POST' })
+      await fetch(`${API_URL}/clear-chat?sector_id=${activeSector.id}`, { method: 'POST' })
     } catch (error) {
       console.error('Erro ao limpar chat:', error)
     }
 
-    // Cria nova conversa no localStorage
-    const newConv = createConversation([])
+    // Cria nova conversa no localStorage vinculada ao setor
+    const newConv = createConversation([], activeSector.id.toString())
     setActiveConvId(newConv.id)
     setMessages([])
     toast.success('Nova conversa iniciada')
@@ -198,8 +222,9 @@ export default function Home() {
   // Seleciona conversa do historico
   const selectConversation = async (conversation: Conversation) => {
     // Limpa memoria do servidor para a nova conversa
+    const sectorParam = activeSector ? `?sector_id=${activeSector.id}` : ''
     try {
-      await fetch(`${API_URL}/clear-chat`, { method: 'POST' })
+      await fetch(`${API_URL}/clear-chat${sectorParam}`, { method: 'POST' })
     } catch (error) {
       console.error('Erro ao limpar chat:', error)
     }
@@ -211,13 +236,18 @@ export default function Home() {
 
   // Upload de arquivo
   const uploadFile = async (file: File) => {
+    if (!activeSector) {
+      toast.error('Selecione um setor primeiro')
+      return false
+    }
+
     const formData = new FormData()
     formData.append('file', file)
 
     const loadingToast = toast.loading(`Processando ${file.name}...`)
 
     try {
-      const res = await fetch(`${API_URL}/upload`, {
+      const res = await fetch(`${API_URL}/upload?sector_id=${activeSector.id}`, {
         method: 'POST',
         body: formData
       })
@@ -226,6 +256,7 @@ export default function Home() {
         toast.dismiss(loadingToast)
         toast.success(`${file.name} adicionado com sucesso!`)
         loadStats()
+        refreshSectors() // Atualiza contagem de documentos
         return true
       }
       toast.dismiss(loadingToast)
@@ -241,10 +272,15 @@ export default function Home() {
 
   // Adiciona URL
   const addUrl = async (url: string) => {
+    if (!activeSector) {
+      toast.error('Selecione um setor primeiro')
+      return false
+    }
+
     const loadingToast = toast.loading('Processando URL...')
 
     try {
-      const res = await fetch(`${API_URL}/add-url`, {
+      const res = await fetch(`${API_URL}/add-url?sector_id=${activeSector.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url })
@@ -255,6 +291,7 @@ export default function Home() {
       if (res.ok) {
         toast.success('URL adicionada com sucesso!')
         loadStats()
+        refreshSectors() // Atualiza contagem de documentos
         return true
       }
 
@@ -271,13 +308,16 @@ export default function Home() {
 
   // Deleta documento individual
   const deleteDocument = async (source: string) => {
+    const sectorParam = activeSector ? `?sector_id=${activeSector.id}` : ''
+
     try {
-      const res = await fetch(`${API_URL}/documents/${encodeURIComponent(source)}`, {
+      const res = await fetch(`${API_URL}/documents/${encodeURIComponent(source)}${sectorParam}`, {
         method: 'DELETE'
       })
 
       if (res.ok) {
         loadStats()
+        refreshSectors() // Atualiza contagem de documentos
         return true
       }
       toast.error('Erro ao remover documento')
@@ -289,15 +329,21 @@ export default function Home() {
     }
   }
 
-  // Limpa base
+  // Limpa base do setor
   const clearDatabase = async () => {
+    if (!activeSector) {
+      toast.error('Selecione um setor primeiro')
+      return
+    }
+
     try {
-      await fetch(`${API_URL}/clear`, { method: 'POST' })
+      await fetch(`${API_URL}/clear?sector_id=${activeSector.id}`, { method: 'POST' })
       setMessages([])
       setActiveConvId(null)
       setActiveConversationId(null)
       loadStats()
-      toast.success('Base de conhecimento limpa')
+      refreshSectors() // Atualiza contagem de documentos
+      toast.success('Base de conhecimento do setor limpa')
     } catch (error) {
       toast.error('Erro ao limpar base')
       console.error('Erro ao limpar base:', error)

@@ -10,14 +10,15 @@ from fake_useragent import UserAgent
 
 def carrega_site(url: str, max_tentativas: int = 5) -> str:
     """
-    Carrega conteudo de um site.
+    Carrega conteudo de um site preservando estrutura.
+    Tenta extrair com estrutura (headings, listas), com fallback para WebBaseLoader.
 
     Args:
         url: URL do site
         max_tentativas: Numero maximo de tentativas
 
     Returns:
-        Texto extraido do site
+        Texto extraido do site com estrutura preservada
 
     Raises:
         Exception: Se nao conseguir carregar apos todas tentativas
@@ -30,11 +31,18 @@ def carrega_site(url: str, max_tentativas: int = 5) -> str:
             # Define user agent aleatorio para evitar bloqueios
             os.environ['USER_AGENT'] = UserAgent().random
 
+            # Tenta extrair com estrutura preservada
+            documento = _carrega_site_estruturado(url)
+
+            # Verifica se o conteudo e valido
+            if documento and len(documento.strip()) > 100:
+                return documento
+
+            # Fallback para WebBaseLoader basico
             loader = WebBaseLoader(url, raise_for_status=True)
             lista_documentos = loader.load()
             documento = '\n\n'.join([doc.page_content for doc in lista_documentos])
 
-            # Verifica se o conteudo e valido
             if documento and len(documento.strip()) > 100:
                 return documento
 
@@ -49,62 +57,182 @@ def carrega_site(url: str, max_tentativas: int = 5) -> str:
     raise Exception(f"Nao foi possivel carregar o site apos {max_tentativas} tentativas. Erro: {ultimo_erro}")
 
 
+def _carrega_site_estruturado(url: str) -> str:
+    """
+    Carrega site preservando estrutura de headings, listas e paragrafos.
+
+    Args:
+        url: URL do site
+
+    Returns:
+        Texto estruturado em Markdown
+    """
+    import requests
+    from bs4 import BeautifulSoup
+
+    headers = {'User-Agent': UserAgent().random}
+    response = requests.get(url, headers=headers, timeout=30)
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    # Remove elementos que nao sao conteudo
+    for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'form', 'noscript']):
+        tag.decompose()
+
+    partes = []
+
+    # Processa elementos na ordem que aparecem
+    for elem in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'pre', 'code', 'blockquote']):
+        tag_name = elem.name
+        text = elem.get_text(strip=True)
+
+        if not text or len(text) < 3:
+            continue
+
+        # Headings viram markdown
+        if tag_name.startswith('h'):
+            level = int(tag_name[1])
+            partes.append(f"\n{'#' * level} {text}\n")
+
+        # Listas
+        elif tag_name == 'li':
+            partes.append(f"- {text}")
+
+        # Codigo
+        elif tag_name in ['pre', 'code']:
+            partes.append(f"\n```\n{text}\n```\n")
+
+        # Citacoes
+        elif tag_name == 'blockquote':
+            partes.append(f"> {text}")
+
+        # Paragrafos normais
+        else:
+            partes.append(text)
+
+    return '\n'.join(partes)
+
+
+def _formata_transcricao_com_timestamps(segmentos: list) -> str:
+    """
+    Formata transcricao incluindo timestamps para referencia.
+    Agrupa segmentos em blocos de ~30 segundos para nao poluir muito.
+
+    Args:
+        segmentos: Lista de dicts com 'text' e 'start' (segundos)
+
+    Returns:
+        Transcricao formatada com timestamps [MM:SS]
+    """
+    if not segmentos:
+        return ""
+
+    partes = []
+    ultimo_timestamp_marcado = -30  # Marca timestamp a cada ~30 segundos
+
+    for seg in segmentos:
+        texto = seg.get("text", "").strip()
+        start = seg.get("start", 0)
+
+        if not texto:
+            continue
+
+        # Adiciona timestamp se passou 30 segundos desde o ultimo
+        if start - ultimo_timestamp_marcado >= 30:
+            minutos = int(start // 60)
+            segundos = int(start % 60)
+            partes.append(f"\n[{minutos:02d}:{segundos:02d}] {texto}")
+            ultimo_timestamp_marcado = start
+        else:
+            partes.append(texto)
+
+    return " ".join(partes)
+
+
 def carrega_youtube(url_ou_id: str, idioma: str = 'pt') -> str:
     """
     Carrega transcricao de um video do YouTube.
-
-    Args:
-        url_ou_id: URL completa ou ID do video
-        idioma: Codigo do idioma para legendas (padrao: pt)
-
-    Returns:
-        Transcricao do video
-
-    Raises:
-        Exception: Se nao conseguir carregar a transcricao
+    Preserva timestamps para referencia temporal.
+    Usa Supadata API como metodo principal, youtube-transcript-api como fallback.
     """
-    # Extrai o video ID se for URL completa
+    import requests
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from config import Config
+
     video_id = _extrair_video_id(url_ou_id)
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
 
-    # Tenta usar youtube-transcript-api diretamente (mais confiavel)
+    # Metodo 1: Supadata API (funciona de servidores cloud)
+    supadata_key = Config.SUPADATA_API_KEY
+    if supadata_key:
+        try:
+            response = requests.get(
+                "https://api.supadata.ai/v1/youtube/transcript",
+                headers={"x-api-key": supadata_key},
+                params={"url": video_url, "lang": idioma},
+                timeout=30
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if "content" in data:
+                    # Formato novo: lista de segmentos com timestamps
+                    if isinstance(data["content"], list):
+                        return _formata_transcricao_com_timestamps(data["content"])
+                    else:
+                        return data["content"]
+                elif "transcript" in data:
+                    return data["transcript"]
+            else:
+                print(f"[Supadata] Erro {response.status_code}: {response.text[:200]}")
+        except Exception as e:
+            print(f"[Supadata] Falhou: {str(e)[:100]}")
+
+    # Metodo 2: youtube-transcript-api com proxy (fallback)
     try:
-        from youtube_transcript_api import YouTubeTranscriptApi, FetchedTranscript
+        from youtube_transcript_api import YouTubeTranscriptApi
+        from youtube_transcript_api.proxies import WebshareProxyConfig, GenericProxyConfig
 
-        # Tenta diferentes idiomas
         idiomas_tentativa = [idioma, 'pt-BR', 'pt', 'en', 'en-US']
-
         transcript = None
 
-        # Nova API (v1.x): usa fetch() diretamente
-        try:
+        proxy_url = Config.YOUTUBE_PROXY
+        if proxy_url:
+            if proxy_url.startswith("webshare:"):
+                parts = proxy_url.split(":")
+                if len(parts) >= 3:
+                    ytt_api = YouTubeTranscriptApi(proxy_config=WebshareProxyConfig(parts[1], parts[2]))
+                else:
+                    ytt_api = YouTubeTranscriptApi()
+            else:
+                ytt_api = YouTubeTranscriptApi(proxy_config=GenericProxyConfig(https_url=proxy_url))
+        else:
             ytt_api = YouTubeTranscriptApi()
+
+        try:
             transcript = ytt_api.fetch(video_id, languages=idiomas_tentativa)
-        except Exception as e1:
-            # Tenta sem especificar idioma
-            try:
-                transcript = ytt_api.fetch(video_id)
-            except Exception as e2:
-                # Fallback para API antiga (v0.x)
-                try:
-                    transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=idiomas_tentativa)
-                except:
-                    transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        except:
+            transcript = ytt_api.fetch(video_id)
 
         if not transcript:
             raise Exception("Nenhuma transcricao encontrada para este video")
 
-        # Concatena o texto da transcricao
-        # A nova API retorna FetchedTranscriptSnippet com .text, a antiga retorna lista de dicts
-        textos = []
+        # Concatena o texto da transcricao preservando timestamps
+        # A nova API retorna FetchedTranscriptSnippet, a antiga retorna lista de dicts
+        segmentos = []
         for entry in transcript:
-            if hasattr(entry, 'text'):
-                textos.append(entry.text)
+            if hasattr(entry, 'text') and hasattr(entry, 'start'):
+                segmentos.append({"text": entry.text, "start": entry.start})
             elif isinstance(entry, dict):
-                textos.append(entry.get('text', ''))
+                segmentos.append({
+                    "text": entry.get('text', ''),
+                    "start": entry.get('start', 0)
+                })
             else:
-                textos.append(str(entry))
-        documento = ' '.join(textos)
+                segmentos.append({"text": str(entry), "start": 0})
 
+        documento = _formata_transcricao_com_timestamps(segmentos)
         return documento
 
     except ImportError:
@@ -140,23 +268,17 @@ def carrega_youtube(url_ou_id: str, idioma: str = 'pt') -> str:
 def _extrair_video_id(url_ou_id: str) -> str:
     """
     Extrai o ID do video de uma URL do YouTube.
-
-    Args:
-        url_ou_id: URL ou ID do video
-
-    Returns:
-        ID do video
     """
-    # Se ja for apenas o ID
-    if len(url_ou_id) == 11 and '/' not in url_ou_id:
+    # Se ja for apenas o ID (sem barras e tamanho razoavel)
+    if '/' not in url_ou_id and len(url_ou_id) <= 15:
         return url_ou_id
 
-    # Padroes de URL do YouTube
     import re
-
+    # Padroes de URL do YouTube (aceita IDs de 8-15 caracteres)
     padroes = [
-        r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})',
-        r'youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})',
+        r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{8,15})',
+        r'youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{8,15})',
+        r'[?&]v=([a-zA-Z0-9_-]{8,15})',
     ]
 
     for padrao in padroes:
@@ -164,7 +286,6 @@ def _extrair_video_id(url_ou_id: str) -> str:
         if match:
             return match.group(1)
 
-    # Se nenhum padrao encontrado, assume que e o proprio ID
     return url_ou_id
 
 

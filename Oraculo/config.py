@@ -19,13 +19,14 @@ class Config:
     EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 
     # RAG Settings
-    CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
-    CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
-    TOP_K_RESULTS = int(os.getenv("TOP_K_RESULTS", "5"))
+    CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1500"))       # Preserva paragrafos completos
+    CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))  # ~13% sobreposicao semantica
+    TOP_K_RESULTS = int(os.getenv("TOP_K_RESULTS", "8"))    # Mais contexto disponivel
+    SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.5"))  # Filtro de qualidade
 
     # LLM Settings
-    TEMPERATURE = float(os.getenv("TEMPERATURE", "0.7"))
-    MAX_TOKENS = int(os.getenv("MAX_TOKENS", "2000"))
+    TEMPERATURE = float(os.getenv("TEMPERATURE", "0.3"))    # Mais preciso e consistente
+    MAX_TOKENS = int(os.getenv("MAX_TOKENS", "4000"))       # Respostas mais completas
 
     # Paths
     CHROMA_PERSIST_DIR = str(BASE_DIR / "data" / "chroma_db")
@@ -34,12 +35,23 @@ class Config:
     # Upload limits
     MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "50"))
 
+    # Proxy para YouTube (para contornar bloqueio de IP de cloud)
+    YOUTUBE_PROXY = os.getenv("YOUTUBE_PROXY", "")
+
+    # Supadata API Key (alternativa para transcrição do YouTube)
+    SUPADATA_API_KEY = os.getenv("SUPADATA_API_KEY", "")
+
+    # Audio Settings (Whisper)
+    WHISPER_MODEL = os.getenv("WHISPER_MODEL", "whisper-1")
+    MAX_AUDIO_SIZE_MB = int(os.getenv("MAX_AUDIO_SIZE_MB", "25"))
+
     # Tipos de arquivo suportados
     SUPPORTED_EXTENSIONS = {
         'documents': ['.pdf', '.docx', '.txt', '.json'],
         'spreadsheets': ['.xlsx', '.csv'],
         'presentations': ['.pptx'],
         'images': ['.png', '.jpg', '.jpeg'],
+        'audio': ['.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm', '.ogg'],
         'web': ['site', 'youtube']
     }
 

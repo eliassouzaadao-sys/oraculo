@@ -62,6 +62,59 @@ class TokenData(BaseModel):
     email: Optional[str] = None
 
 
+# =====================
+# SCHEMAS DE SETOR
+# =====================
+
+class SectorCreate(BaseModel):
+    """Schema para criacao de setor."""
+    name: str
+    description: Optional[str] = None
+    color: str = "#6366f1"
+    icon: str = "folder"
+
+
+class SectorUpdate(BaseModel):
+    """Schema para atualizacao de setor."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SectorResponse(BaseModel):
+    """Schema de resposta do setor."""
+    id: int
+    name: str
+    slug: str
+    description: Optional[str] = None
+    color: str
+    icon: str
+    created_at: datetime
+    is_active: bool
+    member_count: int = 0
+    document_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class SectorMemberAdd(BaseModel):
+    """Schema para adicionar membro ao setor."""
+    user_id: int
+    role: str = "member"
+
+
+class SectorMemberResponse(BaseModel):
+    """Schema de resposta de membro do setor."""
+    user_id: int
+    email: str
+    username: str
+    role: str
+    joined_at: Optional[datetime] = None
+
+
 # Funcoes de senha
 def hash_password(password: str) -> str:
     """Gera hash da senha."""

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import Image from 'next/image'
@@ -25,6 +25,9 @@ import {
 import { User } from '@/lib/auth'
 import { Conversation, loadConversations, deleteConversation } from '@/lib/storage'
 import { downloadConversation } from '@/lib/export'
+import SectorSelector from './SectorSelector'
+import CreateSectorModal from './CreateSectorModal'
+import { useSector } from '@/context/SectorContext'
 
 interface Stats {
   total_documentos: number
@@ -70,11 +73,33 @@ export default function Sidebar({
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [documentMenuOpen, setDocumentMenuOpen] = useState<string | null>(null)
   const [conversationMenuOpen, setConversationMenuOpen] = useState<string | null>(null)
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
+  const [showCreateSector, setShowCreateSector] = useState(false)
 
-  // Carrega conversas do localStorage
+  const { activeSector } = useSector()
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Fecha menu ao clicar fora
   useEffect(() => {
-    setConversations(loadConversations())
-  }, [activeConversationId])
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setConversationMenuOpen(null)
+        setSelectedConversation(null)
+      }
+    }
+
+    if (conversationMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [conversationMenuOpen])
+
+  // Carrega conversas do localStorage filtradas pelo setor ativo
+  useEffect(() => {
+    const sectorId = activeSector?.id.toString()
+    setConversations(loadConversations(sectorId))
+  }, [activeConversationId, activeSector])
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -107,15 +132,18 @@ export default function Sidebar({
 
   const handleDeleteConversation = (id: string) => {
     deleteConversation(id)
-    setConversations(loadConversations())
+    const sectorId = activeSector?.id.toString()
+    setConversations(loadConversations(sectorId))
     toast.success('Conversa removida')
     setConversationMenuOpen(null)
+    setSelectedConversation(null)
   }
 
   const handleExportConversation = (conversation: Conversation) => {
     downloadConversation(conversation, 'md')
     toast.success('Conversa exportada')
     setConversationMenuOpen(null)
+    setSelectedConversation(null)
   }
 
   const formatDate = (timestamp: number) => {
@@ -193,6 +221,14 @@ export default function Sidebar({
           </h1>
         </div>
 
+        {/* Sector Selector */}
+        <div className="px-4 py-3 border-b border-chat-border">
+          <SectorSelector
+            onCreateClick={() => setShowCreateSector(true)}
+            onManageClick={() => window.location.href = '/admin'}
+          />
+        </div>
+
         {/* New Chat Button */}
         <div className="px-4 py-4">
           <button
@@ -262,38 +298,23 @@ export default function Sidebar({
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            setConversationMenuOpen(conversationMenuOpen === conv.id ? null : conv.id)
+                            if (conversationMenuOpen === conv.id) {
+                              setConversationMenuOpen(null)
+                              setSelectedConversation(null)
+                            } else {
+                              const rect = e.currentTarget.getBoundingClientRect()
+                              setMenuPosition({
+                                top: rect.bottom + 4,
+                                left: rect.right - 130
+                              })
+                              setConversationMenuOpen(conv.id)
+                              setSelectedConversation(conv)
+                            }
                           }}
                           className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-chat-input transition-all"
                         >
                           <MoreHorizontal size={14} className="text-chat-text-secondary" />
                         </button>
-
-                        {/* Dropdown menu */}
-                        {conversationMenuOpen === conv.id && (
-                          <div className="absolute right-0 top-full mt-1 z-50 bg-chat-input border border-chat-border rounded-lg shadow-lg py-1 min-w-[120px]">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleExportConversation(conv)
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-chat-text hover:bg-chat-hover transition-colors"
-                            >
-                              <Download size={12} />
-                              Exportar
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteConversation(conv.id)
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
-                            >
-                              <Trash2 size={12} />
-                              Excluir
-                            </button>
-                          </div>
-                        )}
                       </div>
                     ))}
                   </motion.div>
@@ -334,7 +355,7 @@ export default function Sidebar({
                     <input
                       type="file"
                       className="hidden"
-                      accept=".pdf,.docx,.xlsx,.pptx,.txt,.csv,.json,.png,.jpg,.jpeg"
+                      accept=".pdf,.docx,.xlsx,.pptx,.txt,.csv,.json,.png,.jpg,.jpeg,.mp3,.mp4,.m4a,.wav,.webm,.mpeg,.mpga,.ogg"
                       onChange={handleFileChange}
                       disabled={uploading}
                     />
@@ -481,6 +502,39 @@ export default function Sidebar({
           className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-30"
           onClick={onToggle}
         />
+      )}
+
+      {/* Create Sector Modal */}
+      <CreateSectorModal
+        isOpen={showCreateSector}
+        onClose={() => setShowCreateSector(false)}
+      />
+
+      {/* Conversation Context Menu - Renderizado fora do container de scroll */}
+      {conversationMenuOpen && selectedConversation && (
+        <div
+          ref={menuRef}
+          className="fixed z-[9999] bg-chat-sidebar border border-chat-border rounded-xl shadow-2xl py-1.5 min-w-[140px]"
+          style={{
+            top: menuPosition.top,
+            left: menuPosition.left,
+          }}
+        >
+          <button
+            onClick={() => handleExportConversation(selectedConversation)}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-chat-text hover:bg-chat-hover transition-colors"
+          >
+            <Download size={14} />
+            Exportar
+          </button>
+          <button
+            onClick={() => handleDeleteConversation(selectedConversation.id)}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <Trash2 size={14} />
+            Excluir
+          </button>
+        </div>
       )}
     </>
   )

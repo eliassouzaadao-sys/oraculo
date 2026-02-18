@@ -27,6 +27,13 @@ class Documento:
     upload_date: str
     chunk_index: int
     total_chunks: int
+    # Metadados opcionais para preservar contexto
+    page_number: Optional[int] = None           # Para PDFs
+    timestamp_start: Optional[float] = None     # Para audio/video (segundos)
+    timestamp_end: Optional[float] = None       # Para audio/video (segundos)
+    heading_context: Optional[str] = None       # Titulo/secao do chunk
+    content_type: str = "text"                  # text, table, code, list
+    sector_id: str = "default"                  # ID do setor (isolamento por setor)
 
 
 class KnowledgeBase:
@@ -77,7 +84,7 @@ class KnowledgeBase:
             dados = [asdict(d) for d in self._documentos]
             json.dump(dados, f, ensure_ascii=False, indent=2)
 
-    def adicionar_documento(self, texto: str, fonte: str, tipo: str) -> int:
+    def adicionar_documento(self, texto: str, fonte: str, tipo: str, sector_id: str = "default") -> int:
         """
         Adiciona um documento a base de conhecimento.
 
@@ -85,6 +92,7 @@ class KnowledgeBase:
             texto: Conteudo do documento
             fonte: Nome/URL da fonte
             tipo: Tipo do arquivo (pdf, docx, site, etc)
+            sector_id: ID do setor para isolamento
 
         Returns:
             Numero de chunks adicionados
@@ -112,7 +120,8 @@ class KnowledgeBase:
                 type=tipo,
                 upload_date=timestamp,
                 chunk_index=i,
-                total_chunks=len(chunks)
+                total_chunks=len(chunks),
+                sector_id=str(sector_id)
             )
             novos_docs.append(doc)
 
@@ -121,21 +130,31 @@ class KnowledgeBase:
 
         return len(novos_docs)
 
-    def buscar(self, pergunta: str, k: Optional[int] = None) -> List[dict]:
+    def buscar(self, pergunta: str, sector_id: str = None, k: Optional[int] = None, threshold: Optional[float] = None) -> List[dict]:
         """
         Busca documentos relevantes para a pergunta.
+        Filtra resultados por threshold de similaridade para garantir qualidade.
 
         Args:
             pergunta: Pergunta do usuario
+            sector_id: ID do setor para filtrar (None = todos)
             k: Numero de resultados (padrao: TOP_K_RESULTS)
+            threshold: Similaridade minima (padrao: SIMILARITY_THRESHOLD)
 
         Returns:
-            Lista de documentos relevantes
+            Lista de documentos relevantes ordenados por score
         """
         if k is None:
             k = Config.TOP_K_RESULTS
+        if threshold is None:
+            threshold = Config.SIMILARITY_THRESHOLD
 
-        if not self._documentos:
+        # Filtra por setor se especificado
+        documentos = self._documentos
+        if sector_id is not None:
+            documentos = [d for d in documentos if str(getattr(d, 'sector_id', 'default')) == str(sector_id)]
+
+        if not documentos:
             return []
 
         # Gera embedding da pergunta
@@ -143,22 +162,36 @@ class KnowledgeBase:
 
         # Calcula similaridade com todos os documentos
         resultados = []
-        for doc in self._documentos:
+        for doc in documentos:
             score = self._cosine_similarity(query_embedding, doc.embedding)
             resultados.append((doc, score))
 
         # Ordena por similaridade (maior primeiro)
         resultados.sort(key=lambda x: x[1], reverse=True)
 
-        # Retorna top k
+        # Filtra por threshold de qualidade
+        resultados_filtrados = [(doc, score) for doc, score in resultados if score >= threshold]
+
+        # Se poucos resultados passaram no threshold, relaxa o filtro
+        # para garantir que sempre haja algum contexto
+        if len(resultados_filtrados) < 3 and len(resultados) >= 3:
+            resultados_filtrados = resultados[:k]
+        else:
+            resultados_filtrados = resultados_filtrados[:k]
+
+        # Retorna com metadados expandidos
         return [
             {
                 "content": doc.content,
                 "source": doc.source,
                 "type": doc.type,
-                "score": score
+                "score": score,
+                "page_number": doc.page_number,
+                "timestamp_start": doc.timestamp_start,
+                "heading_context": doc.heading_context,
+                "content_type": doc.content_type
             }
-            for doc, score in resultados[:k]
+            for doc, score in resultados_filtrados
         ]
 
     def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
@@ -167,14 +200,22 @@ class KnowledgeBase:
         b = np.array(vec2)
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-    def get_estatisticas(self) -> dict:
+    def get_estatisticas(self, sector_id: str = None) -> dict:
         """
         Retorna estatisticas da base de conhecimento.
+
+        Args:
+            sector_id: ID do setor para filtrar (None = todos)
 
         Returns:
             Dicionario com estatisticas
         """
-        if not self._documentos:
+        # Filtra por setor se especificado
+        documentos = self._documentos
+        if sector_id is not None:
+            documentos = [d for d in documentos if str(getattr(d, 'sector_id', 'default')) == str(sector_id)]
+
+        if not documentos:
             return {
                 "total_chunks": 0,
                 "total_documentos": 0,
@@ -182,44 +223,64 @@ class KnowledgeBase:
                 "tipos": {}
             }
 
-        fontes = set(d.source for d in self._documentos)
+        fontes = set(d.source for d in documentos)
         tipos = {}
-        for d in self._documentos:
+        for d in documentos:
             tipos[d.type] = tipos.get(d.type, 0) + 1
 
         return {
-            "total_chunks": len(self._documentos),
+            "total_chunks": len(documentos),
             "total_documentos": len(fontes),
             "fontes": list(fontes),
             "tipos": tipos
         }
 
-    def limpar_base(self) -> bool:
+    def limpar_base(self, sector_id: str = None) -> bool:
         """
-        Remove todos os documentos da base.
+        Remove documentos da base.
+
+        Args:
+            sector_id: ID do setor para limpar (None = limpa todos)
 
         Returns:
             True se sucesso
         """
         try:
-            self._documentos = []
+            if sector_id is not None:
+                # Remove apenas documentos do setor
+                self._documentos = [
+                    d for d in self._documentos
+                    if str(getattr(d, 'sector_id', 'default')) != str(sector_id)
+                ]
+            else:
+                # Remove todos
+                self._documentos = []
             self._salvar_db()
             return True
         except Exception:
             return False
 
-    def remover_documento(self, fonte: str) -> bool:
+    def remover_documento(self, fonte: str, sector_id: str = None) -> bool:
         """
         Remove um documento especifico da base.
 
         Args:
             fonte: Nome/URL da fonte a remover
+            sector_id: ID do setor (None = remove de todos os setores)
 
         Returns:
             True se sucesso
         """
         try:
-            self._documentos = [d for d in self._documentos if d.source != fonte]
+            if sector_id is not None:
+                # Remove apenas do setor especificado
+                self._documentos = [
+                    d for d in self._documentos
+                    if not (d.source == fonte and str(getattr(d, 'sector_id', 'default')) == str(sector_id))
+                ]
+            else:
+                # Remove de todos os setores
+                self._documentos = [d for d in self._documentos if d.source != fonte]
             self._salvar_db()
             return True
         except Exception:

@@ -9,6 +9,8 @@ from langchain_community.document_loaders import PyPDFLoader, TextLoader, CSVLoa
 def carrega_pdf(caminho: str) -> str:
     """
     Carrega conteudo de um arquivo PDF.
+    Tenta usar pdfplumber para melhor extracao de tabelas,
+    com fallback para PyPDFLoader.
 
     Args:
         caminho: Caminho do arquivo
@@ -16,9 +18,80 @@ def carrega_pdf(caminho: str) -> str:
     Returns:
         Texto extraido do PDF
     """
-    loader = PyPDFLoader(caminho)
-    documentos = loader.load()
-    return '\n\n'.join([doc.page_content for doc in documentos])
+    # Tenta usar pdfplumber para melhor extracao
+    try:
+        return _carrega_pdf_avancado(caminho)
+    except ImportError:
+        # Fallback para PyPDFLoader basico
+        loader = PyPDFLoader(caminho)
+        documentos = loader.load()
+        return '\n\n'.join([doc.page_content for doc in documentos])
+
+
+def _carrega_pdf_avancado(caminho: str) -> str:
+    """
+    Carrega PDF usando pdfplumber para preservar tabelas.
+    Extrai texto normal e formata tabelas como Markdown.
+
+    Args:
+        caminho: Caminho do arquivo
+
+    Returns:
+        Texto extraido com tabelas formatadas
+    """
+    import pdfplumber
+
+    partes = []
+
+    with pdfplumber.open(caminho) as pdf:
+        for page_num, page in enumerate(pdf.pages, 1):
+            partes_pagina = [f"[Pagina {page_num}]"]
+
+            # Extrai texto normal
+            texto = page.extract_text() or ""
+            if texto.strip():
+                partes_pagina.append(texto.strip())
+
+            # Extrai e formata tabelas
+            tabelas = page.extract_tables()
+            for tab_idx, tabela in enumerate(tabelas):
+                if tabela:
+                    texto_tabela = _formata_tabela_markdown(tabela)
+                    if texto_tabela:
+                        partes_pagina.append(f"\n[Tabela {tab_idx + 1}]\n{texto_tabela}")
+
+            if len(partes_pagina) > 1:
+                partes.append('\n'.join(partes_pagina))
+
+    return '\n\n'.join(partes)
+
+
+def _formata_tabela_markdown(tabela: list) -> str:
+    """
+    Formata uma tabela como Markdown.
+
+    Args:
+        tabela: Lista de listas representando linhas da tabela
+
+    Returns:
+        Tabela formatada em Markdown
+    """
+    if not tabela or not tabela[0]:
+        return ""
+
+    linhas = []
+    for i, row in enumerate(tabela):
+        # Limpa celulas vazias ou None
+        celulas = [str(c).strip() if c else "" for c in row]
+        linha = "| " + " | ".join(celulas) + " |"
+        linhas.append(linha)
+
+        # Adiciona separador apos o header
+        if i == 0:
+            separador = "|" + "|".join(["---"] * len(celulas)) + "|"
+            linhas.append(separador)
+
+    return '\n'.join(linhas)
 
 
 def carrega_txt(caminho: str) -> str:
